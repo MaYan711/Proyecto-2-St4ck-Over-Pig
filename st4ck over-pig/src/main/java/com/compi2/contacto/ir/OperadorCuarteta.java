@@ -1,0 +1,58 @@
+package com.compi2.contacto.ir;
+
+public enum OperadorCuarteta {
+
+    INICIO_FUNCION,
+    FIN_FUNCION,
+
+    DECLARAR,
+    DECLARAR_PARAMETRO,
+
+    ASIGNAR,
+    INICIALIZAR_COMPUESTO,
+
+    SUMAR,
+    RESTAR,
+    MULTIPLICAR,
+    DIVIDIR,
+    MODULO,
+
+    NEGATIVO,
+    NEGAR,
+
+    IGUALDAD,
+    DIFERENTE,
+    MENOR,
+    MAYOR,
+    MENOR_IGUAL,
+    MAYOR_IGUAL,
+
+    AND,
+    OR,
+
+    COMPARAR,
+
+    ETIQUETA,
+    SALTAR,
+    SALTAR_SI_FALSO,
+    SALTAR_SI_VERDADERO,
+
+    PARAMETRO,
+    LLAMAR,
+    RETORNAR,
+
+    NUEVO_OBJETO,
+    NUEVO_ARREGLO,
+
+    LEER,
+
+    LEER_STACK,
+    ESCRIBIR_STACK,
+
+    LEER_HEAP,
+    ESCRIBIR_HEAP,
+    LEER_TIPO_OBJETO,
+    ESCRIBIR_TIPO_OBJETO,
+
+    IMPRIMIR
+}
