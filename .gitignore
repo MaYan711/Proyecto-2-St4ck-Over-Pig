@@ -1,0 +1,11 @@
+target/
+.idea/
+gen/
+out/
+.run/
+*.iml
+*.class
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
