@@ -130,9 +130,8 @@ class ValidadorHerenciaZTest {
     }
 
     @Test
-    void rechazaOverrideDeMetodoDefault() {
-        comprobarError(
-                "@Override no corresponde",
+    void aceptaOverrideDeMetodoDefaultEnMismoPaquete() {
+        assertTrue(validar(
                 "class Padre { void mostrar() {} }",
                 """
                 class Hija extends Padre {
@@ -140,6 +139,84 @@ class ValidadorHerenciaZTest {
                     public void mostrar() {}
                 }
                 """
+        ).isEmpty());
+    }
+
+    @Test
+    void exigeOverrideDeMetodoDefaultEnMismoPaquete() {
+        comprobarError(
+                "requiere @Override",
+                "class Padre { void mostrar() {} }",
+                "class Hija extends Padre { public void mostrar() {} }"
+        );
+    }
+
+    @Test
+    void rechazaReduccionDeDefaultAPrivado() {
+        comprobarError(
+                "reducir la visibilidad",
+                "class Padre { void mostrar() {} }",
+                "class Hija extends Padre { @Override private void mostrar() {} }"
+        );
+    }
+
+    @Test
+    void rechazaOverrideDeMetodoDefaultEnOtroPaquete() {
+        comprobarErrorConRutas(
+                "@Override no corresponde",
+                new String[]{
+                        "class Padre { void mostrar() {} }",
+                        "class Hija extends Padre { @Override public void mostrar() {} }"
+                },
+                Path.of("paqueteA", "Padre.z"),
+                Path.of("paqueteB", "Hija.z")
+        );
+    }
+
+    @Test
+    void permiteMetodoConMismaFirmaDefaultDeOtroPaqueteSinOverride() {
+        assertTrue(validarConRutas(
+                new String[]{
+                        "class Padre { void mostrar() {} }",
+                        "class Hija extends Padre { public void mostrar() {} }"
+                },
+                Path.of("paqueteA", "Padre.z"),
+                Path.of("paqueteB", "Hija.z")
+        ).isEmpty());
+    }
+
+    @Test
+    void permiteOverrideProtegidoEntrePaquetes() {
+        assertTrue(validarConRutas(
+                new String[]{
+                        "class Padre { protected void mostrar() {} }",
+                        "class Hija extends Padre { @Override protected void mostrar() {} }"
+                },
+                Path.of("paqueteA", "Padre.z"),
+                Path.of("paqueteB", "Hija.z")
+        ).isEmpty());
+    }
+
+    @Test
+    void rechazaReduccionDeProtegidoADefault() {
+        comprobarError(
+                "reducir la visibilidad",
+                "class Padre { protected void mostrar() {} }",
+                "class Hija extends Padre { @Override void mostrar() {} }"
+        );
+    }
+
+    private void comprobarErrorConRutas(
+            String fragmento,
+            String[] fuentes,
+            Path... rutas
+    ) {
+        List<Diagnostico> diagnosticos = validarConRutas(fuentes, rutas);
+        assertTrue(
+                diagnosticos.stream().anyMatch(diagnostico ->
+                        diagnostico.esError() && diagnostico.mensaje().contains(fragmento)),
+                () -> "No se encontro el error esperado: " + fragmento
+                        + ". Diagnosticos: " + diagnosticos
         );
     }
 
@@ -161,6 +238,15 @@ class ValidadorHerenciaZTest {
     }
 
     private List<Diagnostico> validar(String... fuentes) {
+        Path[] rutas = new Path[fuentes.length];
+        for (int i = 0; i < fuentes.length; i++) {
+            rutas[i] = Path.of("Prueba" + i + ".z");
+        }
+        return validarConRutas(fuentes, rutas);
+    }
+
+    private List<Diagnostico> validarConRutas(String[] fuentes, Path... rutas) {
+        assertEquals(fuentes.length, rutas.length);
         List<ProgramaAst> programas = new ArrayList<>();
 
         for (int i = 0; i < fuentes.length; i++) {
@@ -177,7 +263,7 @@ class ValidadorHerenciaZTest {
             assertEquals(0, parser.getNumberOfSyntaxErrors());
 
             programas.add(
-                    new ZAstBuilder(Path.of("Prueba" + i + ".z"))
+                    new ZAstBuilder(rutas[i])
                             .construir(contexto)
             );
         }

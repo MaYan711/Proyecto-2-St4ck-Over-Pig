@@ -22,28 +22,28 @@ class GeneradorRiscVDecimalesMemoriaTest {
 
     @Test void sumaDecimalConEntero() {
         String s = generar(c(OperadorCuarteta.SUMAR, "3.25", "2", "pig_t0"));
-        assertTrue(s.contains("fadd.s ft2, ft0, ft1"));
-        assertTrue(s.contains("fcvt.s.w ft1, t1"));
+        assertTrue(s.contains("fadd.d ft2, ft0, ft1"));
+        assertTrue(s.contains("fcvt.d.w ft1, t1"));
     }
 
     @Test void restaYMultiplicaDecimal() {
         String s = generar(c(OperadorCuarteta.RESTAR, "5.75", "1.5", "pig_t0"),
                 c(OperadorCuarteta.MULTIPLICAR, "pig_t0", "2", "pig_t1"));
-        assertTrue(s.contains("fsub.s ft2, ft0, ft1"));
-        assertTrue(s.contains("fmul.s ft2, ft0, ft1"));
+        assertTrue(s.contains("fsub.d ft2, ft0, ft1"));
+        assertTrue(s.contains("fmul.d ft2, ft0, ft1"));
     }
 
     @Test void comparaDecimales() {
         String s = generar(c(OperadorCuarteta.MENOR, "1.25", "1.5", "pig_t0"),
                 c(OperadorCuarteta.MAYOR_IGUAL, "2.25", "2", "pig_t1"));
-        assertTrue(s.contains("flt.s t2, ft0, ft1"));
-        assertTrue(s.contains("fle.s t2, ft1, ft0"));
+        assertTrue(s.contains("flt.d t2, ft0, ft1"));
+        assertTrue(s.contains("fle.d t2, ft1, ft0"));
     }
 
     @Test void soportaRestoDecimal() {
         String s = generar(c(OperadorCuarteta.MODULO, "5.5", "2", "pig_t0"));
-        assertTrue(s.contains("fcvt.w.s t3, ft2, rtz"));
-        assertTrue(s.contains("fsub.s ft2, ft0, ft2"));
+        assertTrue(s.contains("fcvt.w.d t3, ft2, rtz"));
+        assertTrue(s.contains("fsub.d ft2, ft0, ft2"));
     }
 
     @Test void conservaTipoAlPasarPorStack() {
@@ -64,14 +64,14 @@ class GeneradorRiscVDecimalesMemoriaTest {
 
     @Test void imprimeDecimalConEcallRars() {
         String s = generar(c(OperadorCuarteta.IMPRIMIR, "4.5", "println", "-"));
-        assertTrue(s.contains("fmv.w.x fa0, t0"));
-        assertTrue(s.contains("li a7, 2"));
+        assertTrue(s.contains("fsgnj.d fa0, ft0, ft0"));
+        assertTrue(s.contains("li a7, 3"));
     }
 
     @Test void leeDecimalConEcallRars() {
         String s = generar(c(OperadorCuarteta.LEER, "decimalis", "-", "pig_t0"));
-        assertTrue(s.contains("li a7, 6"));
-        assertTrue(s.contains("fmv.x.w t0, fa0"));
+        assertTrue(s.contains("li a7, 7"));
+        assertTrue(s.contains("lw t0, 0(t6)"));
     }
 
     @Test void concatenacionDecimalNoImprimeBits() {
@@ -100,6 +100,6 @@ class GeneradorRiscVDecimalesMemoriaTest {
 
     @Test void manejaNegativosFlotantes() {
         String s = generar(c(OperadorCuarteta.NEGATIVO, "1.25", "-", "pig_t0"));
-        assertTrue(s.contains("fneg.s ft0, ft0"));
+        assertTrue(s.contains("fneg.d ft0, ft0"));
     }
 }

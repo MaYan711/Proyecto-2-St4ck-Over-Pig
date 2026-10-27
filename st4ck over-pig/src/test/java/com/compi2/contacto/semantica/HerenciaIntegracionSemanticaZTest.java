@@ -85,15 +85,15 @@ class HerenciaIntegracionSemanticaZTest {
     }
 
     @Test
-    void atributoDefaultNoAccesible() {
-        comprobar(false,
+    void atributoDefaultAccesibleEnMismoPaquete() {
+        comprobar(true,
                 "class A { int valor; }",
                 "class B extends A { public int obtener() { return valor; } }");
     }
 
     @Test
-    void metodoProtegidoDesdeAjena() {
-        comprobar(false,
+    void metodoProtegidoAccesibleEnMismoPaquete() {
+        comprobar(true,
                 "class A { protected void probar() {} }",
                 "class B { public void ejecutar(A a) { a.probar(); } }");
     }

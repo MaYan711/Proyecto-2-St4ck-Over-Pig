@@ -112,7 +112,7 @@ class GeneradorRiscVFuncionesYEntradaTest {
         String s = generar(c(OperadorCuarteta.SUMAR, "@STR@str_t0", "3.5", "str_t1"),
                 c(OperadorCuarteta.DIVIDIR, "9", "2", "tmp_0"));
         assertTrue(s.contains("jal ra, rv_concat"));
-        assertTrue(s.contains("fdiv.s ft2, ft0, ft1"));
+        assertTrue(s.contains("fdiv.d ft2, ft0, ft1"));
         assertTrue(!s.isBlank());
     }
 }
