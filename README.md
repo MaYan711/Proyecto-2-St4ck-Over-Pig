@@ -124,16 +124,3 @@ El proyecto cuenta con la siguiente documentación:
 - Manual técnico.
 - Diagrama de clases.
 
-## Autor
-
-**Mario Raúl Yancor Ocaña**
-
-Carné: 201930761
-
-Universidad de San Carlos de Guatemala
-
-Centro Universitario de Occidente - CUNOC
-
-Organización de Lenguajes y Compiladores 2
-
-2026
