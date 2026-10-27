@@ -81,6 +81,10 @@ public final class GeneradorRiscV {
         linea("rv_heap: .space 400000");
         linea("rv_stack_decimal: .space 400000");
         linea("rv_heap_decimal: .space 400000");
+        linea("rv_stack_decimal_alto: .space 400000");
+        linea("rv_heap_decimal_alto: .space 400000");
+        linea(".align 3");
+        linea("rv_decimal_aux: .space 16");
         linea("rv_tipo: .space 400000");
         linea("rv_entrada: .space 4096");
         linea("rv_profundidad: .word 0");
@@ -155,16 +159,19 @@ public final class GeneradorRiscV {
                 etiquetas.putIfAbsent(c.resultado(), "rv_lbl_" + indiceFuncion + "_" + etiquetas.size());
             }
         }
-        int siguiente = 8;
+        int siguiente = 24;
         for (String temporal : new ArrayList<>(temporales.keySet())) {
             temporales.put(temporal, String.valueOf(siguiente));
-            siguiente += 8;
+            siguiente += 12;
         }
         tamanoMarco = ((siguiente + 15) / 16) * 16;
         linea(funciones.get(nombre) + ":");
         ajustarPila(-tamanoMarco);
         instr("sw ra, 0(sp)");
         instr("sw s0, 4(sp)");
+        instr("sw s9, 8(sp)");
+        instr("sw s10, 12(sp)");
+        instr("sw s11, 16(sp)");
         instr("mv s0, sp");
         instr("la t3, rv_profundidad");
         instr("lw t4, 0(t3)");
@@ -181,6 +188,9 @@ public final class GeneradorRiscV {
         instr("addi t4, t4, -1");
         instr("sw t4, 0(t3)");
         instr("lw ra, 0(s0)");
+        instr("lw s9, 8(s0)");
+        instr("lw s10, 12(s0)");
+        instr("lw s11, 16(s0)");
         instr("lw t3, 4(s0)");
         if (tamanoMarco <= 2047) {
             instr("addi sp, s0, " + tamanoMarco);
@@ -239,12 +249,13 @@ public final class GeneradorRiscV {
                 cargarTipado(c.argumento1(), "t0", "a4");
                 String fin = interno("negativo_fin");
                 instr("beqz a4, " + fin);
-                instr("fmv.w.x ft0, t0");
-                instr("fneg.s ft0, ft0");
-                instr("fmv.x.w t2, ft0");
+                cargarDoble("t0", "s10", "ft0");
+                instr("fneg.d ft0, ft0");
+                guardarDobleEnRegistros("ft0", "t2", "s9");
                 instr("j " + fin + "_guardar");
                 linea(fin + ":");
                 instr("neg t2, t0");
+                instr("li s9, 0");
                 linea(fin + "_guardar:");
                 guardarTipado(c.resultado(), "t2", "a4");
             }
@@ -329,6 +340,7 @@ public final class GeneradorRiscV {
                 default -> noSoportado(c, "operacion binaria");
             }
             instr("li a6, 0");
+            instr("li s9, 0");
             instr("j " + finalizado);
         }
         linea(flotante + ":");
@@ -338,43 +350,44 @@ public final class GeneradorRiscV {
             convertirFlotante("t0", "a4", "ft0");
             convertirFlotante("t1", "a5", "ft1");
             switch (c.operador()) {
-                case SUMAR -> instr("fadd.s ft2, ft0, ft1");
-                case RESTAR -> instr("fsub.s ft2, ft0, ft1");
-                case MULTIPLICAR -> instr("fmul.s ft2, ft0, ft1");
+                case SUMAR -> instr("fadd.d ft2, ft0, ft1");
+                case RESTAR -> instr("fsub.d ft2, ft0, ft1");
+                case MULTIPLICAR -> instr("fmul.d ft2, ft0, ft1");
                 case DIVIDIR -> {
-                    instr("fmv.w.x ft3, zero");
-                    instr("feq.s t3, ft1, ft3");
+                    instr("fcvt.d.w ft3, zero");
+                    instr("feq.d t3, ft1, ft3");
                     instr("bnez t3, rv_error_division");
-                    instr("fdiv.s ft2, ft0, ft1");
+                    instr("fdiv.d ft2, ft0, ft1");
                 }
                 case MODULO -> {
-                    instr("fmv.w.x ft3, zero");
-                    instr("feq.s t3, ft1, ft3");
+                    instr("fcvt.d.w ft3, zero");
+                    instr("feq.d t3, ft1, ft3");
                     instr("bnez t3, rv_error_division");
-                    instr("fdiv.s ft2, ft0, ft1");
-                    instr("fcvt.w.s t3, ft2, rtz");
-                    instr("fcvt.s.w ft2, t3");
-                    instr("fmul.s ft2, ft2, ft1");
-                    instr("fsub.s ft2, ft0, ft2");
+                    instr("fdiv.d ft2, ft0, ft1");
+                    instr("fcvt.w.d t3, ft2, rtz");
+                    instr("fcvt.d.w ft2, t3");
+                    instr("fmul.d ft2, ft2, ft1");
+                    instr("fsub.d ft2, ft0, ft2");
                 }
-                case IGUALDAD -> instr("feq.s t2, ft0, ft1");
-                case DIFERENTE -> { instr("feq.s t2, ft0, ft1"); instr("xori t2, t2, 1"); }
-                case MENOR -> instr("flt.s t2, ft0, ft1");
-                case MAYOR -> instr("flt.s t2, ft1, ft0");
-                case MENOR_IGUAL -> instr("fle.s t2, ft0, ft1");
-                case MAYOR_IGUAL -> instr("fle.s t2, ft1, ft0");
+                case IGUALDAD -> instr("feq.d t2, ft0, ft1");
+                case DIFERENTE -> { instr("feq.d t2, ft0, ft1"); instr("xori t2, t2, 1"); }
+                case MENOR -> instr("flt.d t2, ft0, ft1");
+                case MAYOR -> instr("flt.d t2, ft1, ft0");
+                case MENOR_IGUAL -> instr("fle.d t2, ft0, ft1");
+                case MAYOR_IGUAL -> instr("fle.d t2, ft1, ft0");
                 case COMPARAR -> {
-                    instr("flt.s t2, ft1, ft0");
-                    instr("flt.s t3, ft0, ft1");
+                    instr("flt.d t2, ft1, ft0");
+                    instr("flt.d t3, ft0, ft1");
                     instr("sub t2, t2, t3");
                 }
                 default -> noSoportado(c, "operacion flotante");
             }
             if (aritmetica) {
-                instr("fmv.x.w t2, ft2");
+                guardarDobleEnRegistros("ft2", "t2", "s9");
                 instr("li a6, 1");
             } else {
                 instr("li a6, 0");
+                instr("li s9, 0");
             }
         }
         linea(finalizado + ":");
@@ -384,11 +397,25 @@ public final class GeneradorRiscV {
     private void convertirFlotante(String valor, String etiquetaTipo, String destino) {
         String fin = interno("convertido");
         instr("beqz " + etiquetaTipo + ", " + fin + "_entero");
-        instr("fmv.w.x " + destino + ", " + valor);
+        cargarDoble(valor, etiquetaTipo.equals("a4") ? "s10" : "s11", destino);
         instr("j " + fin);
         linea(fin + "_entero:");
-        instr("fcvt.s.w " + destino + ", " + valor);
+        instr("fcvt.d.w " + destino + ", " + valor);
         linea(fin + ":");
+    }
+
+    private void cargarDoble(String bajo, String alto, String flotante) {
+        instr("la t6, rv_decimal_aux");
+        instr("sw " + bajo + ", 0(t6)");
+        instr("sw " + alto + ", 4(t6)");
+        instr("fld " + flotante + ", 0(t6)");
+    }
+
+    private void guardarDobleEnRegistros(String flotante, String bajo, String alto) {
+        instr("la t6, rv_decimal_aux");
+        instr("fsd " + flotante + ", 0(t6)");
+        instr("lw " + bajo + ", 0(t6)");
+        instr("lw " + alto + ", 4(t6)");
     }
 
     private void leerMemoria(Cuarteta c) {
@@ -409,7 +436,12 @@ public final class GeneradorRiscV {
                     ? "rv_stack_decimal" : "rv_heap_decimal"));
             instr("add t3, t3, t4");
             instr("lw a4, 0(t3)");
+            instr("la t3, " + (c.operador() == OperadorCuarteta.LEER_STACK
+                    ? "rv_stack_decimal_alto" : "rv_heap_decimal_alto"));
+            instr("add t3, t3, t4");
+            instr("lw s10, 0(t3)");
         } else {
+            instr("li s10, 0");
             instr("li a4, 0");
         }
         if (c.operador() == OperadorCuarteta.LEER_TIPO_OBJETO) {
@@ -434,6 +466,10 @@ public final class GeneradorRiscV {
                     ? "rv_stack_decimal" : "rv_heap_decimal"));
             instr("add t3, t3, t4");
             instr("sw a5, 0(t3)");
+            instr("la t3, " + (c.operador() == OperadorCuarteta.ESCRIBIR_STACK
+                    ? "rv_stack_decimal_alto" : "rv_heap_decimal_alto"));
+            instr("add t3, t3, t4");
+            instr("sw s11, 0(t3)");
         }
     }
 
@@ -483,15 +519,36 @@ public final class GeneradorRiscV {
             instr("li a7, 4"); instr("ecall");
         } else {
             String entero = interno("print_entero");
+            String flotante = interno("print_flotante");
             String fin = interno("print_fin");
             cargarTipado(c.argumento1(), "t0", "a4");
             instr("beqz a4, " + entero);
-            instr("fmv.w.x fa0, t0");
-            instr("li a7, 2");
+            cargarDoble("t0", "s10", "ft0");
+            instr("li t1, 2147483647");
+            instr("fcvt.d.w ft1, t1");
+            instr("flt.d t2, ft1, ft0");
+            instr("bnez t2, " + flotante);
+            instr("li t1, -2147483648");
+            instr("fcvt.d.w ft1, t1");
+            instr("flt.d t2, ft0, ft1");
+            instr("bnez t2, " + flotante);
+            instr("fcvt.w.d t1, ft0, rtz");
+            instr("fcvt.d.w ft1, t1");
+            instr("feq.d t2, ft0, ft1");
+            instr("beqz t2, " + flotante);
+            instr("mv a0, t1");
+            instr("li a7, 1");
+            instr("ecall");
+            instr("j " + fin);
+            linea(flotante + ":");
+            instr("fsgnj.d fa0, ft0, ft0");
+            instr("li a7, 3");
             instr("ecall");
             instr("j " + fin);
             linea(entero + ":");
-            instr("mv a0, t0"); instr("li a7, 1"); instr("ecall");
+            instr("mv a0, t0");
+            instr("li a7, 1");
+            instr("ecall");
             linea(fin + ":");
         }
         if (salto) { instr("li a0, 10"); instr("li a7, 11"); instr("ecall"); }
@@ -510,8 +567,9 @@ public final class GeneradorRiscV {
         }
         if (c.resultado().equals("-")) return;
         if (tipo.contains("decimal") || tipo.contains("flotante") || tipo.contains("double")) {
-            instr("li a7, 6"); instr("ecall");
-            instr("fmv.x.w t0, fa0"); instr("li a4, 1");
+            instr("li a7, 7"); instr("ecall");
+            guardarDobleEnRegistros("fa0", "t0", "s10");
+            instr("li a4, 1");
             guardarTipado(c.resultado(), "t0", "a4");
         } else {
             instr("li a7, " + (tipo.contains("char") || tipo.contains("littera") ? 12 : 5));
@@ -668,21 +726,21 @@ public final class GeneradorRiscV {
         instr("sw s1, 4(sp)");
         instr("sw s2, 8(sp)");
         instr("sw s3, 12(sp)");
-        instr("fmv.w.x ft0, a0");
-        instr("fcvt.s.w ft1, zero");
-        instr("flt.s s1, ft0, ft1");
+        cargarDoble("a0", "a1", "ft0");
+        instr("fcvt.d.w ft1, zero");
+        instr("flt.d s1, ft0, ft1");
         instr("beqz s1, rv_float_unsigned");
         instr("li a0, 45");
         instr("jal ra, rv_append_char");
-        instr("fsgnjx.s ft0, ft0, ft0");
+        instr("fsgnjx.d ft0, ft0, ft0");
         linea("rv_float_unsigned:");
-        instr("fcvt.w.s s2, ft0, rtz");
-        instr("fcvt.s.w ft1, s2");
-        instr("fsub.s ft0, ft0, ft1");
-        instr("li t0, 0x447a0000");
-        instr("fmv.w.x ft1, t0");
-        instr("fmul.s ft0, ft0, ft1");
-        instr("fcvt.w.s s3, ft0, rne");
+        instr("fcvt.w.d s2, ft0, rtz");
+        instr("fcvt.d.w ft1, s2");
+        instr("fsub.d ft0, ft0, ft1");
+        instr("li t0, 1000");
+        instr("fcvt.d.w ft1, t0");
+        instr("fmul.d ft0, ft0, ft1");
+        instr("fcvt.w.d s3, ft0, rne");
         instr("li t0, 1000");
         instr("blt s3, t0, rv_float_no_carry");
         instr("addi s2, s2, 1");
@@ -735,6 +793,7 @@ public final class GeneradorRiscV {
         instr("jal ra, rv_append_number");
         instr("j rv_concat_right");
         linea("rv_concat_left_float:");
+        instr("mv a1, s10");
         instr("jal ra, rv_append_float");
         instr("j rv_concat_right");
         linea("rv_concat_left_string:");
@@ -746,6 +805,7 @@ public final class GeneradorRiscV {
         instr("jal ra, rv_append_number");
         instr("j rv_concat_end");
         linea("rv_concat_right_float:");
+        instr("mv a1, s11");
         instr("jal ra, rv_append_float");
         instr("j rv_concat_end");
         linea("rv_concat_right_string:");
@@ -784,7 +844,9 @@ public final class GeneradorRiscV {
         if (dato.matches("[-+]?[0-9]+")) {
             instr("li " + registro + ", " + dato);
         } else if (dato.matches("[-+]?[0-9]+\\.[0-9]+")) {
-            instr("li " + registro + ", " + Float.floatToRawIntBits(Float.parseFloat(dato)));
+            instr("li " + registro + ", " + (int) Double.doubleToRawLongBits(Double.parseDouble(dato)));
+        } else if (esLiteralCaracter(dato)) {
+            instr("li " + registro + ", " + codigoCaracter(dato));
         } else if (dato.equals("null")) {
             instr("li " + registro + ", -1");
         } else if (dato.equals("true") || dato.equals("verum")) {
@@ -801,14 +863,49 @@ public final class GeneradorRiscV {
         }
     }
 
+    private boolean esLiteralCaracter(String valor) {
+        return valor.length() >= 2 && valor.charAt(0) == '\''
+                && valor.charAt(valor.length() - 1) == '\'';
+    }
+
+    private int codigoCaracter(String valor) {
+        String contenido = valor.substring(1, valor.length() - 1);
+        if (contenido.length() == 1 && contenido.charAt(0) != '\\') {
+            return contenido.charAt(0);
+        }
+        if (contenido.length() == 2 && contenido.charAt(0) == '\\') {
+            return switch (contenido.charAt(1)) {
+                case 'n' -> 10;
+                case 'r' -> 13;
+                case 't' -> 9;
+                case 'b' -> 8;
+                case 'f' -> 12;
+                case '0' -> 0;
+                case '\\' -> 92;
+                case '\'' -> 39;
+                case '"' -> 34;
+                default -> throw new IllegalArgumentException(
+                        "RISC-V: escape de caracter no soportado " + valor + " en " + funcion);
+            };
+        }
+        throw new IllegalArgumentException(
+                "RISC-V: literal de caracter invalido " + valor + " en " + funcion);
+    }
+
     private void cargarTipado(String valor, String registro, String tipoRegistro) {
         cargar(valor, registro);
         String dato = valor.trim().replace("@STR@", "");
+        String registroAlto = tipoRegistro.equals("a4") ? "s10" : "s11";
         if (dato.matches("[-+]?[0-9]+\\.[0-9]+")) {
+            long bits = Double.doubleToRawLongBits(Double.parseDouble(dato));
+            instr("li " + registroAlto + ", " + (int) (bits >>> 32));
             instr("li " + tipoRegistro + ", 1");
         } else if (temporales.containsKey(dato)) {
-            leerSlot(tipoRegistro, Integer.parseInt(temporales.get(dato)) + 4);
+            int offset = Integer.parseInt(temporales.get(dato));
+            leerSlot(registroAlto, offset + 4);
+            leerSlot(tipoRegistro, offset + 8);
         } else {
+            instr("li " + registroAlto + ", 0");
             instr("li " + tipoRegistro + ", 0");
         }
     }
@@ -816,7 +913,11 @@ public final class GeneradorRiscV {
     private void guardarTipado(String destino, String registro, String tipoRegistro) {
         guardar(destino, registro);
         if (temporales.containsKey(destino)) {
-            escribirSlot(tipoRegistro, Integer.parseInt(temporales.get(destino)) + 4);
+            int offset = Integer.parseInt(temporales.get(destino));
+            String registroAlto = tipoRegistro.equals("a6") ? "s9" :
+                    tipoRegistro.equals("a5") ? "s11" : "s10";
+            escribirSlot(registroAlto, offset + 4);
+            escribirSlot(tipoRegistro, offset + 8);
         }
     }
 

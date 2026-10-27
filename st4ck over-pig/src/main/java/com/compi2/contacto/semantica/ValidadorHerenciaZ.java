@@ -19,6 +19,7 @@ public final class ValidadorHerenciaZ {
 
     public List<Diagnostico> validar(List<ProgramaAst> programas) {
         Map<String, ZAst.Clase> clases = obtenerClases(programas);
+        JerarquiaClasesZ jerarquia = new JerarquiaClasesZ(programas);
         List<Diagnostico> diagnosticos = new ArrayList<>();
 
         validarPadres(clases, diagnosticos);
@@ -29,7 +30,7 @@ public final class ValidadorHerenciaZ {
         }
 
         for (ZAst.Clase clase : clases.values()) {
-            validarMetodos(clase, clases, diagnosticos);
+            validarMetodos(clase, clases, jerarquia, diagnosticos);
         }
 
         return List.copyOf(diagnosticos);
@@ -102,6 +103,7 @@ public final class ValidadorHerenciaZ {
     private void validarMetodos(
             ZAst.Clase clase,
             Map<String, ZAst.Clase> clases,
+            JerarquiaClasesZ jerarquia,
             List<Diagnostico> diagnosticos
     ) {
         for (ZAst.Miembro miembro : clase.miembros()) {
@@ -112,7 +114,8 @@ public final class ValidadorHerenciaZ {
             ZAst.Metodo heredado = buscarMetodoHeredado(
                     clase,
                     metodo,
-                    clases
+                    clases,
+                    jerarquia
             );
 
             if (heredado == null) {
@@ -163,7 +166,8 @@ public final class ValidadorHerenciaZ {
     private ZAst.Metodo buscarMetodoHeredado(
             ZAst.Clase clase,
             ZAst.Metodo metodo,
-            Map<String, ZAst.Clase> clases
+            Map<String, ZAst.Clase> clases,
+            JerarquiaClasesZ jerarquia
     ) {
         ZAst.Clase actual = clase.padre()
                 .map(clases::get)
@@ -172,8 +176,11 @@ public final class ValidadorHerenciaZ {
         while (actual != null) {
             for (ZAst.Miembro miembro : actual.miembros()) {
                 if (miembro instanceof ZAst.Metodo candidato
-                        && esHeredable(candidato.visibilidad())
-                        && firma(candidato).equals(firma(metodo))) {
+                        && firma(candidato).equals(firma(metodo))
+                        && jerarquia.accesible(
+                        candidato.visibilidad(),
+                        actual.nombre(),
+                        clase.nombre())) {
                     return candidato;
                 }
             }
@@ -239,16 +246,12 @@ public final class ValidadorHerenciaZ {
         return false;
     }
 
-    private boolean esHeredable(Visibilidad visibilidad) {
-        return visibilidad == Visibilidad.PUBLICA
-                || visibilidad == Visibilidad.PROTEGIDA;
-    }
-
     private int nivelVisibilidad(Visibilidad visibilidad) {
         return switch (visibilidad) {
-            case PUBLICA -> 2;
-            case PROTEGIDA -> 1;
-            case PRIVADA, DEFAULT -> 0;
+            case PUBLICA -> 3;
+            case PROTEGIDA -> 2;
+            case DEFAULT -> 1;
+            case PRIVADA -> 0;
         };
     }
 

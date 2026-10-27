@@ -7,9 +7,6 @@ import com.compi2.contacto.proyecto.ArchivoFuente;
 import com.compi2.contacto.proyecto.GestorProyecto;
 import com.compi2.contacto.proyecto.LenguajeFuente;
 import com.compi2.contacto.proyecto.ProyectoCompilacion;
-import com.compi2.contacto.c3d.GeneradorCodigoTresDirecciones;
-import com.compi2.contacto.c3d.GeneradorCodigoC;
-import com.compi2.contacto.c3d.GeneradorRiscV;
 
 import javax.swing.BorderFactory;
 import javax.swing.JFileChooser;
@@ -44,7 +41,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.zip.ZipEntry;
@@ -536,15 +532,14 @@ public final class VentanaPrincipal extends JFrame {
     private void abrirProyecto(
             Path raiz
     ) {
-        try {
-            raizProyecto =
-                    raiz.toAbsolutePath()
-                            .normalize();
+        if (!confirmarCambiosPendientes("abrir otro proyecto")) {
+            return;
+        }
 
-            DefaultMutableTreeNode nodoRaiz =
-                    crearNodo(
-                            raizProyecto
-                    );
+        try {
+            Path nuevaRaiz = raiz.toAbsolutePath().normalize();
+            DefaultMutableTreeNode nodoRaiz = crearNodo(nuevaRaiz);
+            raizProyecto = nuevaRaiz;
 
             arbolProyecto.setModel(
                     new DefaultTreeModel(
@@ -779,54 +774,26 @@ public final class VentanaPrincipal extends JFrame {
         );
     }
 
-    private void guardarTodos() {
-        for (int indice = 0;
-             indice < pestanas.getTabCount();
-             indice++) {
-
-            PanelEditor panel =
-                    (PanelEditor)
-                            pestanas.getComponentAt(
-                                    indice
-                            );
-
-            if (panel.editor()
-                    .modificado()) {
-
-                guardar(
-                        panel.editor()
-                );
+    private boolean guardarTodos() {
+        for (int indice = 0; indice < pestanas.getTabCount(); indice++) {
+            PanelEditor panel = (PanelEditor) pestanas.getComponentAt(indice);
+            if (panel.editor().modificado() && !guardar(panel.editor())) {
+                return false;
             }
         }
+        return true;
     }
 
-    private void guardar(
-            EditorCodigo editor
-    ) {
+    private boolean guardar(EditorCodigo editor) {
         try {
-            gestorProyecto.guardar(
-                    editor.ruta(),
-                    editor.getText()
-            );
-
+            gestorProyecto.guardar(editor.ruta(), editor.getText());
             editor.marcarGuardado();
-
-            actualizarTituloPestana(
-                    editor
-            );
-
-            estado.setText(
-                    "Archivo guardado: "
-                            + editor.ruta()
-                            .getFileName()
-            );
-
+            actualizarTituloPestana(editor);
+            estado.setText("Archivo guardado: " + editor.ruta().getFileName());
+            return true;
         } catch (IOException excepcion) {
-
-            mostrarError(
-                    "No se pudo guardar el archivo",
-                    excepcion
-            );
+            mostrarError("No se pudo guardar el archivo", excepcion);
+            return false;
         }
     }
 
@@ -1229,7 +1196,10 @@ public final class VentanaPrincipal extends JFrame {
         }
 
         try {
-            guardarTodos();
+            if (!guardarTodos()) {
+                estado.setText("Analisis cancelado: no se pudieron guardar los cambios");
+                return;
+            }
 
             modeloDiagnosticos.actualizar(
                     List.of()
@@ -1291,57 +1261,39 @@ public final class VentanaPrincipal extends JFrame {
                     resultado.programaMemoria()
             );
 
-            String codigoC3D =
-                    new GeneradorCodigoTresDirecciones()
-                            .generar(
-                                    resultado.programaMemoria()
-                            );
+            SalidasGeneradas salidas = SalidasGeneradas.generar(
+                    resultado.programaMemoria());
 
-            panelCodigoC3D.mostrar(
-                    codigoC3D
-            );
+            panelCodigoC3D.mostrar(salidas.c3d().mostrar("codigo C3D"));
 
-            codigoCActual =
-                    new GeneradorCodigoC()
-                            .generar(
-                                    resultado.programaMemoria()
-                            );
+            codigoCActual = salidas.c().codigo();
+            panelCodigoC.mostrar(salidas.c().mostrar("codigo C"));
 
-            panelCodigoC.mostrar(
-                    codigoCActual
-            );
-
-            try {
-                codigoRiscVActual = new GeneradorRiscV()
-                        .generar(resultado.programaMemoria());
-                panelRiscV.mostrar(codigoRiscVActual);
-            } catch (IllegalArgumentException | IllegalStateException excepcion) {
-                codigoRiscVActual = "";
-                panelRiscV.mostrar("RISC-V aun no disponible para este programa:\n"
-                        + excepcion.getMessage()
-                        + "\n\nEl codigo C sigue disponible y no se modifica.");
-            }
+            codigoRiscVActual = salidas.riscV().codigo();
+            panelRiscV.mostrar(salidas.riscV().mostrar("codigo RISC-V"));
 
             actualizarTitulosResultados();
 
-            pestanasResultados.setSelectedIndex(
-                    4
-            );
+            if (!salidas.riscV().generada()) {
+                pestanasResultados.setSelectedIndex(5);
+            } else if (!salidas.c().generada()) {
+                pestanasResultados.setSelectedIndex(4);
+            } else if (!salidas.c3d().generada()) {
+                pestanasResultados.setSelectedIndex(3);
+            } else {
+                pestanasResultados.setSelectedIndex(4);
+            }
 
             estado.setText(
-                    "Analisis completado sin errores"
+                    salidas.estado()
                             + " | Archivos: "
-                            + proyecto.archivos()
-                            .size()
+                            + proyecto.archivos().size()
                             + " | Diagnosticos: "
-                            + resultado.diagnosticos()
-                            .size()
+                            + resultado.diagnosticos().size()
                             + " | Cuartetas: "
-                            + panelCuartetas.modelo()
-                            .getRowCount()
+                            + panelCuartetas.modelo().getRowCount()
                             + " | Memoria: "
-                            + panelMemoria.modelo()
-                            .getRowCount()
+                            + panelMemoria.modelo().getRowCount()
             );
 
         } catch (IOException | RuntimeException excepcion) {
@@ -1401,56 +1353,34 @@ public final class VentanaPrincipal extends JFrame {
         pestanasResultados.setTitleAt(5, "Codigo RISC-V");
     }
 
+    private boolean confirmarCambiosPendientes(String accion) {
+        boolean hayCambios = false;
+        for (int indice = 0; indice < pestanas.getTabCount(); indice++) {
+            PanelEditor panel = (PanelEditor) pestanas.getComponentAt(indice);
+            if (panel.editor().modificado()) {
+                hayCambios = true;
+                break;
+            }
+        }
+
+        int opcion = JOptionPane.CLOSED_OPTION;
+        if (hayCambios) {
+            opcion = JOptionPane.showConfirmDialog(
+                    this,
+                    "Hay archivos sin guardar. Desea guardarlos antes de " + accion + "?",
+                    "Cambios pendientes",
+                    JOptionPane.YES_NO_CANCEL_OPTION,
+                    JOptionPane.WARNING_MESSAGE
+            );
+        }
+        return ProtectorCambiosPendientes.continuar(
+                hayCambios, opcion, this::guardarTodos);
+    }
+
     private void intentarCerrar() {
-        List<EditorCodigo> modificados =
-                new ArrayList<>();
-
-        for (int indice = 0;
-             indice < pestanas.getTabCount();
-             indice++) {
-
-            PanelEditor panel =
-                    (PanelEditor)
-                            pestanas.getComponentAt(
-                                    indice
-                            );
-
-            if (panel.editor()
-                    .modificado()) {
-
-                modificados.add(
-                        panel.editor()
-                );
-            }
+        if (confirmarCambiosPendientes("salir")) {
+            dispose();
         }
-
-        if (!modificados.isEmpty()) {
-
-            int opcion =
-                    JOptionPane.showConfirmDialog(
-                            this,
-                            "Hay archivos sin guardar. Desea guardarlos antes de salir?",
-                            "Cambios pendientes",
-                            JOptionPane.YES_NO_CANCEL_OPTION,
-                            JOptionPane.WARNING_MESSAGE
-                    );
-
-            if (opcion
-                    == JOptionPane.CANCEL_OPTION
-                    || opcion
-                    == JOptionPane.CLOSED_OPTION) {
-
-                return;
-            }
-
-            if (opcion
-                    == JOptionPane.YES_OPTION) {
-
-                guardarTodos();
-            }
-        }
-
-        dispose();
     }
 
     private void mostrarError(
@@ -1470,7 +1400,7 @@ public final class VentanaPrincipal extends JFrame {
     private void guardarCodigoRiscV() {
         if (codigoRiscVActual == null || codigoRiscVActual.isBlank()) {
             JOptionPane.showMessageDialog(this,
-                    "Primero analice un proyecto compatible con el backend RISC-V",
+                    "No hay codigo RISC-V generado para guardar. Revise la pestana Codigo RISC-V",
                     "Codigo RISC-V no disponible", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
@@ -1496,7 +1426,7 @@ public final class VentanaPrincipal extends JFrame {
 
             JOptionPane.showMessageDialog(
                     this,
-                    "Primero debe analizar correctamente el proyecto",
+                    "No hay codigo C generado para guardar. Revise la pestana Codigo C",
                     "Codigo C no disponible",
                     JOptionPane.INFORMATION_MESSAGE
             );

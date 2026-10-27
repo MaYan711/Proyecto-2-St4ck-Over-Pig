@@ -85,15 +85,15 @@ class GeneradorRiscVTest {
                 c(OperadorCuarteta.ASIGNAR, "3.5", "-", "pig_t0")));
         assertTrue(salida.contains("rv_stack_decimal: .space 400000"));
         assertTrue(salida.contains("li a4, 1"));
-        assertTrue(salida.contains("sw a4, 12(s0)"));
+        assertTrue(salida.contains("sw a4, 32(s0)"));
     }
 
     @Test
     void divideEnterosConResultadoDecimal() {
         String salida = new GeneradorRiscV().generar(programa(
                 c(OperadorCuarteta.DIVIDIR, "5", "2", "pig_t0")));
-        assertTrue(salida.contains("fdiv.s ft2, ft0, ft1"));
-        assertTrue(salida.contains("fcvt.s.w ft0, t0"));
+        assertTrue(salida.contains("fdiv.d ft2, ft0, ft1"));
+        assertTrue(salida.contains("fcvt.d.w ft0, t0"));
         assertTrue(salida.contains("rv_error_division:"));
     }
 

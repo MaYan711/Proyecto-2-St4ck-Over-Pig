@@ -12,6 +12,7 @@ import com.compi2.contacto.ast.ProgramaAst;
 import com.compi2.contacto.ast.TipoAst;
 import com.compi2.contacto.ast.piglatin.PAst;
 import com.compi2.contacto.ast.zetariano.ZAst;
+import com.compi2.contacto.ast.zetariano.Visibilidad;
 import com.compi2.contacto.errores.Diagnostico;
 import com.compi2.contacto.errores.Severidad;
 import com.compi2.contacto.errores.TipoDiagnostico;
@@ -1490,78 +1491,71 @@ public final class AnalizadorSemanticoPig {
             PAst.Llamada llamada,
             PAst.Expresion receptor
     ) {
-        List<TipoPig> tipos =
-                resolverArgumentos(
-                        llamada.argumentos()
-                );
-
-        ZAst.Clase declaradora = clase;
-        List<ZAst.Metodo> candidatos = List.of();
+        List<TipoPig> tipos = resolverArgumentos(llamada.argumentos());
+        Map<String, ZAst.Metodo> visibles = new LinkedHashMap<>();
+        Map<String, ZAst.Clase> propietarios = new LinkedHashMap<>();
         Set<String> visitadas = new HashSet<>();
+        boolean encontrado = false;
 
-        while (declaradora != null
-                && visitadas.add(declaradora.nombre())) {
-            candidatos = declaradora.miembros().stream()
-                    .filter(ZAst.Metodo.class::isInstance)
-                    .map(ZAst.Metodo.class::cast)
-                    .filter(metodo -> metodo.nombre().equals(nombre))
-                    .toList();
-            if (!candidatos.isEmpty()) {
-                break;
+        ZAst.Clase actual = clase;
+        while (actual != null && visitadas.add(actual.nombre())) {
+            for (ZAst.Miembro miembro : actual.miembros()) {
+                if (!(miembro instanceof ZAst.Metodo metodo)
+                        || !metodo.nombre().equals(nombre)) {
+                    continue;
+                }
+
+                encontrado = true;
+                if (metodo.visibilidad() != Visibilidad.PUBLICA) {
+                    continue;
+                }
+
+                String firma = firmaMetodoZ(metodo);
+                visibles.putIfAbsent(firma, metodo);
+                propietarios.putIfAbsent(firma, actual);
             }
-            declaradora = declaradora.padre()
-                    .map(clases::get)
-                    .orElse(null);
+            actual = actual.padre().map(clases::get).orElse(null);
         }
 
-        if (candidatos.isEmpty()) {
+        if (visibles.isEmpty()) {
             error(
                     llamada.posicion(),
-                    "La clase '"
-                            + clase.nombre()
-                            + "' no contiene el metodo '"
-                            + nombre
-                            + "'"
+                    encontrado
+                            ? "El metodo '" + nombre + "' no es accesible desde Pig Latin"
+                            : "La clase '" + clase.nombre()
+                            + "' no contiene el metodo '" + nombre + "'"
             );
-
             return TipoPig.desconocido();
         }
 
-        ZAst.Metodo seleccionado =
-                seleccionarMetodo(
-                        candidatos,
-                        tipos
-                );
-
+        ZAst.Metodo seleccionado = seleccionarMetodo(
+                List.copyOf(visibles.values()), tipos
+        );
         if (seleccionado == null) {
             error(
                     llamada.posicion(),
-                    "No existe una sobrecarga compatible de '"
-                            + nombre
-                            + "'"
+                    "No existe una sobrecarga publica compatible de '" + nombre + "'"
             );
-
             return TipoPig.desconocido();
         }
 
+        ZAst.Clase declaradora = propietarios.get(firmaMetodoZ(seleccionado));
         enlaces.registrarLlamada(
                 llamada,
-                nombreMetodoZ(
-                        declaradora,
-                        seleccionado
-                ),
-                Optional.of(
-                        receptor
-                )
+                nombreMetodoZ(declaradora, seleccionado),
+                Optional.of(receptor)
         );
-
         return seleccionado.retorno()
-                .map(
-                        this::resolverTipoZ
-                )
-                .orElse(
-                        TipoPig.voidTipo()
-                );
+                .map(this::resolverTipoZ)
+                .orElse(TipoPig.voidTipo());
+    }
+
+    private String firmaMetodoZ(ZAst.Metodo metodo) {
+        return metodo.nombre() + "("
+                + metodo.parametros().stream()
+                .map(parametro -> parametro.tipo().nombreCompleto())
+                .collect(java.util.stream.Collectors.joining(","))
+                + ")";
     }
 
     private TipoPig resolverAccesoArreglo(
@@ -1685,68 +1679,52 @@ public final class AnalizadorSemanticoPig {
             TipoPig objetivo,
             PAst.AccesoMiembro acceso
     ) {
-        ZAst.Clase clase =
-                clases.get(
-                        objetivo.nombreBase()
-                );
-
+        ZAst.Clase clase = clases.get(objetivo.nombreBase());
         if (clase == null) {
             return TipoPig.desconocido();
         }
 
-        for (ZAst.Miembro miembro
-                : clase.miembros()) {
+        ZAst.Clase actual = clase;
+        Set<String> visitadas = new HashSet<>();
+        boolean metodo = false;
 
-            if (miembro
-                    instanceof ZAst.Atributo atributo
-                    && atributo.nombre()
-                    .equals(
-                            acceso.miembro()
-                    )) {
-
-                return resolverTipoZ(
-                        atributo.tipo()
-                );
-            }
-        }
-
-        boolean metodo =
-                clase.miembros()
-                        .stream()
-                        .filter(
-                                ZAst.Metodo.class::isInstance
-                        )
-                        .map(
-                                ZAst.Metodo.class::cast
-                        )
-                        .anyMatch(
-                                actual ->
-                                        actual.nombre()
-                                                .equals(
-                                                        acceso.miembro()
-                                                )
+        while (actual != null && visitadas.add(actual.nombre())) {
+            for (ZAst.Miembro miembro : actual.miembros()) {
+                if (miembro instanceof ZAst.Atributo atributo
+                        && atributo.nombre().equals(acceso.miembro())) {
+                    if (atributo.visibilidad() != Visibilidad.PUBLICA) {
+                        error(
+                                acceso.posicion(),
+                                "El atributo '" + acceso.miembro()
+                                        + "' no es accesible desde Pig Latin"
                         );
+                        return TipoPig.desconocido();
+                    }
+                    return resolverTipoZ(atributo.tipo());
+                }
+
+                if (miembro instanceof ZAst.Metodo metodoActual
+                        && metodoActual.nombre().equals(acceso.miembro())) {
+                    metodo = true;
+                }
+            }
+            actual = actual.padre().map(clases::get).orElse(null);
+        }
 
         if (metodo) {
             error(
                     acceso.posicion(),
-                    "El metodo '"
-                            + acceso.miembro()
+                    "El metodo '" + acceso.miembro()
                             + "' debe invocarse con parentesis"
             );
-
             return TipoPig.desconocido();
         }
 
         error(
                 acceso.posicion(),
-                "La clase '"
-                        + clase.nombre()
-                        + "' no contiene el miembro '"
-                        + acceso.miembro()
-                        + "'"
+                "La clase '" + clase.nombre()
+                        + "' no contiene el miembro '" + acceso.miembro() + "'"
         );
-
         return TipoPig.desconocido();
     }
 
@@ -1827,23 +1805,25 @@ public final class AnalizadorSemanticoPig {
             );
         }
 
-        ZAst.Constructor seleccionado =
-                seleccionarConstructor(
-                        constructores,
-                        argumentos
-                );
+        List<ZAst.Constructor> publicos = constructores.stream()
+                .filter(constructor -> constructor.visibilidad() == Visibilidad.PUBLICA)
+                .toList();
+        ZAst.Constructor seleccionado = seleccionarConstructor(publicos, argumentos);
 
         if (seleccionado == null) {
+            boolean existeCompatibleNoPublico = constructores.stream()
+                    .filter(constructor -> constructor.visibilidad() != Visibilidad.PUBLICA)
+                    .anyMatch(constructor -> puntajeParametrosZ(
+                            constructor.parametros(), argumentos) >= 0);
             error(
                     nuevo.posicion(),
-                    "No existe un constructor compatible para la clase '"
-                            + clase.nombre()
-                            + "'"
+                    existeCompatibleNoPublico
+                            ? "El constructor de '" + clase.nombre()
+                            + "' no es accesible desde Pig Latin"
+                            : "No existe un constructor publico compatible para la clase '"
+                            + clase.nombre() + "'"
             );
-
-            return TipoPig.objeto(
-                    clase.nombre()
-            );
+            return TipoPig.objeto(clase.nombre());
         }
 
         enlaces.registrarConstructor(
